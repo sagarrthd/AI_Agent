@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "testgenai"
+version = "0.1.0"
+description = "TestGenAI - test case and NI TestStand sequence generator"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "TestGenAI Team"}]
+dependencies = [
+  "pandas>=2.0",
+  "openpyxl>=3.1",
+  "PyYAML>=6.0",
+  "selenium>=4.15",
+  "python-docx>=1.1",
+  "pdfminer.six>=20231228"
+]
+
+[project.scripts]
+testgenai = "testgenai.orchestration.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
