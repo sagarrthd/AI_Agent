@@ -7,9 +7,7 @@ from testgenai.rules.rule_engine import RuleEngine
 from testgenai.models.requirement import Requirement
 from testgenai.mapping.traceability import build_trace_matrix
 from testgenai.reports.stp_writer import write_stp_output
-from testgenai.llm_copilot.copilot_session import CopilotSession
-from testgenai.llm_copilot.prompt_builder import build_prompt
-from testgenai.llm_copilot.response_parser import parse_table_response
+# Copilot imports are lazy-loaded to avoid selenium dependency when LLM is disabled
 from testgenai.models.testcase import TestCase, TestStep
 from testgenai.teststand.xml_builder import build_teststand_xml
 from testgenai.reports.analysis_report import write_requirements_report
@@ -53,6 +51,11 @@ def run_pipeline(config_path: str) -> None:
     tests = engine.build_baseline_tests(requirements)
 
     if cfg.get("llm", {}).get("enabled") and cfg["llm"].get("copilot_url"):
+        # Lazy import to avoid selenium dependency when LLM is disabled
+        from testgenai.llm_copilot.copilot_session import CopilotSession
+        from testgenai.llm_copilot.prompt_builder import build_prompt
+        from testgenai.llm_copilot.response_parser import parse_table_response
+        
         copilot = CopilotSession(
             cfg["llm"].get("browser_profile_path", ""),
             cfg["llm"].get("copilot_url", ""),

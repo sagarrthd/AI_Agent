@@ -28,18 +28,59 @@ def _read_text(path: Path) -> str:
         return _read_docx(path)
     if suffix == ".pdf":
         return _read_pdf(path)
+    if suffix == ".xlsx":
+        return _read_xlsx(path)
     return path.read_text(encoding="utf-8", errors="ignore")
 
 
+def _read_xlsx(path: Path) -> str:
+    try:
+        import pandas as pd
+    except ImportError:
+        print(f"Warning: Skipping '{path.name}' - pandas library is not installed.")
+        return ""
+    except Exception as e:
+        print(f"Warning: Failed to read '{path.name}' - {e}")
+        return ""
+
+    try:
+        df = pd.read_excel(path)
+        # Convert all content to string and join with newlines
+        text_content = []
+        for col in df.columns:
+            # Add column header as context
+            text_content.append(str(col))
+            # Add all non-null values in the column
+            text_content.extend(df[col].dropna().astype(str).tolist())
+        return "\n".join(text_content)
+    except Exception as e:
+        print(f"Warning: Failed to parse '{path.name}' as Excel - {e}")
+        return ""
+
+
 def _read_docx(path: Path) -> str:
-    from docx import Document
+    try:
+        from docx import Document
+    except ImportError:
+        print(f"Warning: Skipping '{path.name}' - python-docx library is not installed.")
+        return ""
+    except Exception as e:
+        print(f"Warning: Failed to read '{path.name}' - {e}")
+        return ""
 
     doc = Document(path)
     return "\n".join(p.text for p in doc.paragraphs)
 
 
 def _read_pdf(path: Path) -> str:
-    from pdfminer.high_level import extract_text
+    try:
+        from pdfminer.high_level import extract_text
+    except ImportError:
+        print(f"Warning: Skipping '{path.name}' - pdfminer.six library is not installed.")
+        return ""
+    except Exception as e:
+        print(f"Warning: Failed to read '{path.name}' - {e}")
+        return ""
 
     return extract_text(str(path)) or ""
 

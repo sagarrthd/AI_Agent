@@ -1,0 +1,10 @@
+REQ-001: The system shall monitor vehicle speed continuously
+REQ-002: The system shall detect brake pedal position
+REQ-003: The system shall calculate required braking force based on speed and pedal position
+REQ-004: The system shall apply anti-lock braking when wheel slip is detected
+REQ-005: The system shall provide driver warning if brake system fault is detected
+REQ-006: The system shall log all brake events to non-volatile memory
+REQ-007: The system shall perform self-diagnostic tests on startup
+REQ-008: The system shall meet ASIL D safety requirements per ISO 26262
+REQ-009: The system shall respond to brake requests within 50ms
+REQ-010: The system shall maintain brake pressure during power loss events

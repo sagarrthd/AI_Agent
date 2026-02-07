@@ -1,0 +1,25 @@
+project:
+  name: "TestGenAI Demo"
+
+inputs:
+  requirements_file: "sample_inputs/requirements.txt"
+  srs_file: ""
+  a2l_file: ""
+  components_file: ""
+  stp_template: ""
+
+outputs:
+  stp_output: "output/test_plan.xlsx"
+  teststand_xml: "output/teststand_sequence.xml"
+  analysis_report: "output/requirements_analysis.docx"
+  scenarios_doc: "output/scenarios.docx"
+  traceability_sheet: "Traceability"
+
+llm:
+  enabled: false
+  copilot_url: ""
+  browser_profile_path: ""
+  response_timeout_s: 120
+
+rules:
+  enable_edge_cases: true

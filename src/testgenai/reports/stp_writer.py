@@ -78,9 +78,10 @@ def _tests_to_dataframe(
             aligned[normalized[key]] = df[default_col]
 
     # Preserve any template columns not mapped by filling empty values.
+    num_rows = len(df)
     for col in template_df.columns:
         if col not in aligned:
-            aligned[col] = ""
+            aligned[col] = [""] * num_rows
 
     return pd.DataFrame(aligned)
 
