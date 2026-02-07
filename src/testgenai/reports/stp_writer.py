@@ -1,10 +1,24 @@
 from __future__ import annotations
-from pathlib import Path
-from typing import Dict, List, Any
-import openpyxl
+
 from copy import copy
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+import openpyxl
 
 from testgenai.models.testcase import TestCase
+
+
+_FIELD_KEYWORDS = {
+    "test_id": ["test id", "id", "case id", "identifier", "test_id"],
+    "title": ["title", "summary", "test name", "case name", "test title"],
+    "description": ["description", "objective", "purpose", "test scenario"],
+    "preconditions": ["preconditions", "pre-requisites", "setup", "pinned", "pin state"],
+    "steps": ["steps", "actions", "procedure", "test steps", "step description", "debugger action"],
+    "expected": ["expected", "expected result", "expected behavior", "writes expected"],
+    "requirements": ["requirement", "req id", "traceability", "ref"],
+}
+
 
 def write_stp_output(
     template_path: str,
@@ -13,154 +27,120 @@ def write_stp_output(
     trace_matrix: Dict[str, List[str]],
     trace_sheet_name: str,
 ) -> None:
-    """
-    Writes test cases into an existing Excel template preserving formatting.
-    """
-    
-    # 1. Load the Template
     if not template_path or not Path(template_path).exists():
         raise FileNotFoundError(f"Template file not found: {template_path}")
-    
-    output = Path(output_path)
-    # Copy template to output to preserve macros/vba/styles
+
     wb = openpyxl.load_workbook(template_path)
-    
-    # 2. Fill Test Plan Sheet
-    target_sheet = None
-    header_map = {}
-    found_header = False
-    
-    # Smart Scan: Look through ALL sheets for a header row
-    print("Scanning sheets for Test Case headers...")
-    
-    field_keywords = {
-        "test_id": ["test id", "id", "case id", "identifier", "test_id"],
-        "title": ["title", "summary", "test name", "case name", "test title"],
-        "description": ["description", "objective", "purpose", "test scenario"],
-        "preconditions": ["preconditions", "pre-requisites", "setup", "pinned", "pin state"],
-        "steps": ["steps", "actions", "procedure", "test steps", "step description", "debugger action"],
-        "expected": ["expected", "expected result", "expected behavior", "writes expected"],
-        "requirements": ["requirement", "req id", "traceability", "ref"],
-    }
-    
-    for sheet_name in wb.sheetnames:
-        sheet = wb[sheet_name]
-        # Scan first 20 rows of each sheet
-        for r_idx in range(1, 21):
-            row_values = []
-            for c in sheet[r_idx]:
-                 val = str(c.value).strip().lower() if c.value else ""
-                 row_values.append(val)
-            
-            # Check for critical keywords to identify this as the Test Plan sheet
-            # We look for "id" AND ("step" OR "title" OR "description")
-            is_header = False
-            if any("test id" in v or "case id" in v for v in row_values):
-                if any("step" in v for v in row_values) or any("title" in v for v in row_values):
-                    is_header = True
-            
-            if is_header:
-                print(f"✓ Found Test Headers in sheet '{sheet_name}' at row {r_idx}")
-                target_sheet = sheet
-                # Build Map
-                for col_idx, cell_value in enumerate(row_values, 1):
-                    for field, keywords in field_keywords.items():
-                        if any(k in cell_value for k in keywords):
-                            if field not in header_map: # First match wins
-                                header_map[field] = col_idx
-                found_header = True
-                break
-        if found_header:
-            break
-            
-    if not target_sheet:
-        print("⚠ Could not automatically detect Test Plan sheet. Using active sheet.")
-        target_sheet = wb.active
-        
-    _fill_test_sheet(target_sheet, tests, header_map)
-    
-    # 3. Fill Traceability Sheet (if requested)
+
+    target_sheet, header_row, header_map = _find_test_sheet(wb)
+    _fill_test_sheet(target_sheet, tests, header_row, header_map)
+
     if trace_sheet_name:
-        if trace_sheet_name in wb.sheetnames:
-            trace_sheet = wb[trace_sheet_name]
-        else:
-            trace_sheet = wb.create_sheet(trace_sheet_name)
+        trace_sheet = wb[trace_sheet_name] if trace_sheet_name in wb.sheetnames else wb.create_sheet(trace_sheet_name)
         _fill_trace_sheet(trace_sheet, trace_matrix)
-        
-    # 4. Save
+
+    output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        wb.save(output)
-        print(f"✓ Saved strict template output to: {output.resolve()}")
-    except Exception as e:
-        print(f"❌ FAILED to save file to {output}: {e}")
-        raise e
+    wb.save(output)
 
-def _fill_test_sheet(sheet, tests: List[TestCase], header_map: Dict[str, int]):
+
+def _find_test_sheet(workbook: openpyxl.Workbook) -> Tuple[openpyxl.worksheet.worksheet.Worksheet, int, Dict[str, int]]:
+    for sheet_name in workbook.sheetnames:
+        sheet = workbook[sheet_name]
+        for row_idx in range(1, min(sheet.max_row, 50) + 1):
+            row_values = [str(c.value).strip().lower() if c.value else "" for c in sheet[row_idx]]
+            if _looks_like_header(row_values):
+                return sheet, row_idx, _build_header_map(row_values)
+
+    return workbook.active, 1, {}
+
+
+def _looks_like_header(row_values: List[str]) -> bool:
+    has_id = any("test id" in v or "case id" in v for v in row_values)
+    has_body = any("step" in v for v in row_values) or any("title" in v for v in row_values)
+    return has_id and has_body
+
+
+def _build_header_map(row_values: List[str]) -> Dict[str, int]:
+    header_map: Dict[str, int] = {}
+    for col_idx, cell_value in enumerate(row_values, 1):
+        for field, keywords in _FIELD_KEYWORDS.items():
+            if field in header_map:
+                continue
+            if any(k in cell_value for k in keywords):
+                header_map[field] = col_idx
+    return header_map
+
+
+def _fill_test_sheet(sheet, tests: List[TestCase], header_row: int, header_map: Dict[str, int]) -> None:
     if not header_map:
-        print("⚠ No headers mapped. Appending raw data to end of sheet.")
-        # Fallback: just write to columns 1, 2, 3...
         header_map = {
-            "test_id": 1, "title": 2, "description": 3, 
-            "preconditions": 4, "steps": 5, "expected": 6, "requirements": 7
+            "test_id": 1,
+            "title": 2,
+            "description": 3,
+            "preconditions": 4,
+            "steps": 5,
+            "expected": 6,
+            "requirements": 7,
         }
-    
-    # Find start row (first empty row after header)
-    # We can't just use max_row because template might have formatting down to row 1000
-    # Let's find the first row where the 'Test ID' column is empty, starting after the header
-    
-    # Determine the test_id column to check for emptiness
-    check_col = header_map.get("test_id", 1)
-    
-    # Heuristic: Start from row 1, go down until we find data, then find next empty
-    # Actually openpyxl max_row is unreliable with styles.
-    # Let's assume we append after the last row that has text in the ID column.
-    
-    last_data_row = 0
-    for row in range(1, 5000): # Scan reasonable limit
-        val = sheet.cell(row=row, column=check_col).value
-        if val:
-            last_data_row = row
-            
-    current_row = last_data_row + 1
-    if current_row < 2: current_row = 2 # Safety
-    
-    print(f"Writing {len(tests)} tests starting at row {current_row}...")
 
-    for test in tests:
-        # Prepare content
-        steps_text = "\n".join(f"{i+1}. {s.action}" for i, s in enumerate(test.steps))
-        expected_text = "\n".join(f"{i+1}. {s.expected}" for i, s in enumerate(test.steps))
-        reqs_text = ", ".join(test.requirements)
-        
-        # Write to mapped columns
-        # Helper to safely write
-        def write_cell(field_name, value):
-            if field_name in header_map:
-                col = header_map[field_name]
-                cell = sheet.cell(row=current_row, column=col)
-                cell.value = value
-                # Optional: Copy style from row above if it exists and has style
-                # But only if row above is not header? safe to skip specific styling for now to avoid errors
+    start_row = header_row + 1
+    _clear_existing_rows(sheet, start_row, header_map)
 
-        write_cell("test_id", test.test_id)
-        write_cell("title", test.title)
-        write_cell("description", test.title) 
-        write_cell("preconditions", test.preconditions)
-        write_cell("steps", steps_text)
-        write_cell("expected", expected_text)
-        write_cell("requirements", reqs_text)
-        
-        current_row += 1
+    template_style_row = _resolve_style_row(sheet, start_row)
+
+    for offset, test in enumerate(tests):
+        row = start_row + offset
+        steps_text = "\n".join(f"{i + 1}. {s.action}" for i, s in enumerate(test.steps))
+        expected_text = "\n".join(f"{i + 1}. {s.expected}" for i, s in enumerate(test.steps))
+
+        values = {
+            "test_id": test.test_id,
+            "title": test.title,
+            "description": test.title,
+            "preconditions": test.preconditions,
+            "steps": steps_text,
+            "expected": expected_text,
+            "requirements": ", ".join(test.requirements),
+        }
+
+        for field, col in header_map.items():
+            cell = sheet.cell(row=row, column=col)
+            cell.value = values.get(field, "")
+            _copy_cell_style(sheet, template_style_row, row, col)
 
 
-def _fill_trace_sheet(sheet, trace_matrix: Dict[str, List[str]]):
-    # simple append
-    row = sheet.max_row + 1
-    sheet.cell(row=row, column=1, value="Requirement ID")
-    sheet.cell(row=row, column=2, value="Test Cases")
-    
-    for req, tests in trace_matrix.items():
-        row += 1
-        sheet.cell(row=row, column=1, value=req)
-        sheet.cell(row=row, column=2, value=", ".join(tests))
+def _clear_existing_rows(sheet, start_row: int, header_map: Dict[str, int]) -> None:
+    for row in range(start_row, sheet.max_row + 1):
+        if not any(sheet.cell(row=row, column=col).value for col in header_map.values()):
+            continue
+        for col in header_map.values():
+            sheet.cell(row=row, column=col).value = None
+
+
+def _resolve_style_row(sheet, start_row: int) -> int:
+    for row in range(start_row, min(sheet.max_row, start_row + 10) + 1):
+        if any(sheet.cell(row=row, column=col).has_style for col in range(1, sheet.max_column + 1)):
+            return row
+    return max(start_row - 1, 1)
+
+
+def _copy_cell_style(sheet, src_row: int, dst_row: int, col: int) -> None:
+    src = sheet.cell(row=src_row, column=col)
+    dst = sheet.cell(row=dst_row, column=col)
+    if src.has_style:
+        dst._style = copy(src._style)
+    if src.number_format:
+        dst.number_format = src.number_format
+    if src.alignment:
+        dst.alignment = copy(src.alignment)
+
+
+def _fill_trace_sheet(sheet, trace_matrix: Dict[str, List[str]]) -> None:
+    sheet.delete_rows(1, sheet.max_row)
+    sheet.cell(row=1, column=1, value="Requirement ID")
+    sheet.cell(row=1, column=2, value="Test Cases")
+
+    for row_idx, (req, tests) in enumerate(trace_matrix.items(), start=2):
+        sheet.cell(row=row_idx, column=1, value=req)
+        sheet.cell(row=row_idx, column=2, value=", ".join(tests))

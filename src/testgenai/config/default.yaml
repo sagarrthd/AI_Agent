@@ -2,9 +2,12 @@ project:
   name: "TestGenAI"
 inputs:
   requirements_file: ""
+  requirements_files: []
   srs_file: ""
   a2l_file: ""
   components_file: ""
+  code_file: ""
+  code_files: []
   stp_template: ""
 outputs:
   stp_output: "out/test_plan.xlsx"
@@ -17,5 +20,6 @@ llm:
   copilot_url: ""
   browser_profile_path: ""
   response_timeout_s: 120
+  extra_user_prompt: ""
 rules:
   enable_edge_cases: true
