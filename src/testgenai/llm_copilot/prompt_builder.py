@@ -5,20 +5,49 @@ from typing import List, Dict, Any
 
 def build_prompt(requirements: List[Any], signals: List[Any], user_prompt: str) -> str:
     req_lines = [
-        f"{_get_value(r, 'req_id')}: {_get_value(r, 'description')}" for r in requirements
+        f"- **{_get_value(r, 'req_id')}**: {_get_value(r, 'description')}" for r in requirements
     ]
     sig_lines = [_get_value(s, "name") for s in signals]
-    prompt = [
-        "Generate test cases in a strict table:",
-        "Test ID | Title | Preconditions | Steps | Expected | Requirement IDs",
-        "User instruction:",
-        user_prompt,
-        "Requirements:",
+    
+    # SYSTEM PERSONA
+    persona = (
+        "You are a Senior Automotive Test Engineer with 20 years of experience in ISO 26262 Functional Safety. "
+        "Your job is to write incredibly detailed, high-coverage test cases for the following requirements."
+    )
+    
+    # TASK DEFINITION
+    task = (
+        "Create a comprehensive Test Plan in a strict Markdown table format. "
+        "For each requirement, generate multiple test cases covering:\n"
+        "1. **Nominal/Happy Path**: Standard operation.\n"
+        "2. **Boundary/Edge Cases**: Min/Max values, limits.\n"
+        "3. **Failure/Robustness**: Invalid inputs, timeout scenarios, fault injection.\n\n"
+        "Format the output EXACTLY as this Markdown table (no other text):\n"
+        "| Test ID | Title | Preconditions | Steps | Expected Results | Requirement IDs |\n"
+        "|---------|-------|---------------|-------|------------------|-----------------|"
+    )
+    
+    # UNUSED SIGNALS (for future use)
+    # sig_text = f"Available Signals: {', '.join(sig_lines)}" if sig_lines else ""
+
+    full_prompt = [
+        persona,
+        "\n---",
+        "## REQUIREMENTS:",
         "\n".join(req_lines),
-        "Signals:",
-        ", ".join(sig_lines),
+        "\n---",
+        "## INSTRUCTIONS:",
+        task,
+        "## RULES:",
+        "- 'Steps' and 'Expected Results' must be numbered lists (1. 2. 3.).",
+        "- 'Preconditions' should be specific (e.g. 'Ignition ON', 'Speed > 100km/h').",
+        "- 'Test ID' should be unique (e.g. TC-001, TC-002).",
+        "- strictly map 'Requirement IDs' to the input list.",
+        "- Do not include chatter or explanations. Just the table.",
+        user_prompt
     ]
-    return "\n".join([p for p in prompt if p])
+    
+    return "\n".join([p for p in full_prompt if p])
 
 
 def _get_value(item: Any, key: str) -> str:
